@@ -6,7 +6,7 @@
 [![Maintainability][maintainability-image]][maintainability-url]
 [![npm download][download-image]][download-url]
 
-[npm-image]: https://img.shields.io/npm/v/@caff/async-busboy.svg?style=flat-square
+[npm-image]: https://img.shields.io/npm/v/@caff/async-busboy.svg
 [npm-url]: https://npmjs.org/package/@caff/async-busboy
 [build-status-image]: https://github.com/caffco/async-busboy/actions/workflows/test.yml/badge.svg
 [build-status-url]: https://github.com/caffco/async-busboy/actions/workflows/test.yml
@@ -14,7 +14,7 @@
 [coverage-url]: https://codeclimate.com/github/caffco/async-busboy/test_coverage
 [maintainability-image]: https://api.codeclimate.com/v1/badges/cc0025a7d5baeb3d99bb/maintainability
 [maintainability-url]: https://codeclimate.com/github/caffco/async-busboy/maintainability
-[download-image]: https://img.shields.io/npm/dm/@caff/async-busboy.svg?style=flat-square
+[download-image]: https://img.shields.io/npm/dm/@caff/async-busboy.svg
 [download-url]: https://npmjs.org/package/@caff/async-busboy
 
 The typical use case for this library is when handling forms that contain file upload field(s) mixed with other inputs.
