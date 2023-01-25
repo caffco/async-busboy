@@ -1,3 +1,11 @@
+# 2.0.0
+
+BREAKING CHANGES:
+
+- There are no intentional breaking changes.
+- Package is now published as ESM and CJS.
+- Major version is bumped to prevent potential breaking changes introduced by the ESM/CJS publishing split.
+
 # 1.0.3
 
 Changed:
