@@ -2,8 +2,6 @@ name: Test
 
 on:
   push:
-  pull_request:
-    branches: ['main']
 
 jobs:
   build:
@@ -21,4 +19,12 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
       - run: npm ci
-      - run: npm test
+      - run: npm run coverage
+      - name: collect_coverage
+        uses: caffco/code-climate-github-action@v0.0.2-alpha.1
+        env:
+          CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
+        with:
+          collect_coverage: 'true'
+          coverage_file_patterns: |
+            **/lcov.info:lcov

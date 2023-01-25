@@ -9,7 +9,7 @@
   },
   "scripts": {
     "test": "vitest",
-    "cover": "vitest --coverage"
+    "coverage": "vitest --coverage"
   },
   "keywords": [
     "koa",
