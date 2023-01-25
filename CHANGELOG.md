@@ -1,3 +1,10 @@
+# 2.0.1
+
+Changed:
+
+- Unify code style.
+- Move type infor from JSDocs to TypeScript.
+
 # 2.0.0
 
 BREAKING CHANGES:
