@@ -31,7 +31,6 @@ export default function (
   };
 
   const customOnFile = options.onFile ?? false;
-  delete options.onFile;
 
   const busboy = new Busboy(options);
 
@@ -42,6 +41,41 @@ export default function (
     const fields: Record<string, string | Array<string>> = {};
     const filePromises: Array<ReadStreamWithMetadata> = [];
 
+    const onError = (err: Error): void => {
+      cleanup();
+      return reject(err);
+    };
+
+    const onEnd = (err?: Error): void => {
+      if (err) {
+        return reject(err);
+      }
+
+      if (customOnFile) {
+        cleanup();
+        return resolve({ fields, files: [] });
+      }
+
+      Promise.all(filePromises)
+        .then((files) => {
+          cleanup();
+          resolve({ fields, files });
+        })
+        .catch(reject);
+    };
+
+    const cleanup = () => {
+      busboy.removeListener('field', onField);
+      busboy.removeListener('file', customOnFile || onFile);
+      busboy.removeListener('close', cleanup);
+      busboy.removeListener('end', cleanup);
+      busboy.removeListener('error', onEnd);
+      busboy.removeListener('partsLimit', onEnd);
+      busboy.removeListener('filesLimit', onEnd);
+      busboy.removeListener('fieldsLimit', onEnd);
+      busboy.removeListener('finish', onEnd);
+    };
+
     request.on('close', cleanup);
 
     busboy
@@ -51,7 +85,7 @@ export default function (
       .on('end', onEnd)
       .on('finish', onEnd);
 
-    busboy.on('partsLimit', function () {
+    busboy.on('partsLimit', () => {
       const err = new Error(
         'Reach parts limit',
       ) as unknown as ErrorWithCodeAndStatus;
@@ -79,40 +113,6 @@ export default function (
     });
 
     request.pipe(busboy);
-
-    function onError(err: Error) {
-      cleanup();
-      return reject(err);
-    }
-
-    function onEnd(err?: Error) {
-      if (err) {
-        return reject(err);
-      }
-      if (customOnFile) {
-        cleanup();
-        resolve({ fields, files: [] });
-      } else {
-        Promise.all(filePromises)
-          .then((files) => {
-            cleanup();
-            resolve({ fields, files });
-          })
-          .catch(reject);
-      }
-    }
-
-    function cleanup() {
-      busboy.removeListener('field', onField);
-      busboy.removeListener('file', customOnFile || onFile);
-      busboy.removeListener('close', cleanup);
-      busboy.removeListener('end', cleanup);
-      busboy.removeListener('error', onEnd);
-      busboy.removeListener('partsLimit', onEnd);
-      busboy.removeListener('filesLimit', onEnd);
-      busboy.removeListener('fieldsLimit', onEnd);
-      busboy.removeListener('finish', onEnd);
-    }
   });
 }
 
@@ -125,26 +125,30 @@ const onField = (
   encoding: Parameters<BusboyEvents['field']>[4],
   mime: Parameters<BusboyEvents['field']>[5],
 ): ReturnType<BusboyEvents['field']> => {
-  // don't overwrite prototypes
-  if (getDescriptor(Object.prototype, name)) return;
+  // Don't overwrite prototypes
+  if (getDescriptor(Object.prototype, name)) {
+    return;
+  }
 
   // This looks like a stringified array, let's parse it
   if (name.indexOf('[') > -1) {
-    const obj = objectFromBluePrint(extractFormData(name), val);
+    const obj = objectFromBluePrint(getKeyPaths(name), val);
     reconcile(obj, fields);
+    return;
+  }
+
+  if (!fields.hasOwnProperty(name)) {
+    fields[name] = val;
+    return;
+  }
+
+  if (Array.isArray(fields[name])) {
+    (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>).push(val);
   } else {
-    if (fields.hasOwnProperty(name)) {
-      if (Array.isArray(fields[name])) {
-        (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>).push(val);
-      } else {
-        (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>) = [
-          fields[name] as Parameters<BusboyEvents['field']>[0],
-          val,
-        ];
-      }
-    } else {
-      fields[name] = val;
-    }
+    (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>) = [
+      fields[name] as Parameters<BusboyEvents['field']>[0],
+      val,
+    ];
   }
 };
 
@@ -157,7 +161,7 @@ interface ReadStreamWithMetadata extends ReadStream {
   mime: string;
 }
 
-function onFile(
+const onFile = (
   filePromises: Array<Promise<ReadStreamWithMetadata>>,
   fieldname: string,
   file: Readable & {
@@ -166,7 +170,7 @@ function onFile(
   filename: string,
   encoding: string,
   mimetype: string,
-) {
+) => {
   const tmpName = Math.random().toString(16).substring(2) + '-' + filename;
   file.tmpName = tmpName;
   const saveTo = path.join(os.tmpdir(), path.basename(tmpName));
@@ -197,70 +201,51 @@ function onFile(
       }),
   );
   filePromises.push(filePromise);
-}
+};
 
 /**
- *
  * Extract a hierarchy array from a stringified formData single input.
  *
- *
- * i.e. topLevel[sub1][sub2] => [topLevel, sub1, sub2]
- *
- * @param  {String} string: Stringify representation of a formData Object
- * @return {Array}
- *
+ * @example topLevel[sub1][sub2] => [topLevel, sub1, sub2]
+ * @param string Stringify representation of a formData Object
  */
-const extractFormData = (string) => {
-  const arr = string.split('[');
-  const first = arr.shift();
-  const res = arr.map((v) => v.split(']')[0]);
-  res.unshift(first);
-  return res;
+const getKeyPaths = (keyPath: string): Array<string> => {
+  const [head, ...tail] = keyPath.split('[');
+  const keysInKeyPath = tail.map((v) => v.split(']')[0]);
+  return [head, ...keysInKeyPath];
 };
 
 /**
- *
  * Generate an object given an hierarchy blueprint and the value
  *
- * i.e. [key1, key2, key3] => { key1: {key2: { key3: value }}};
- *
- * @param  {Array} arr:   from extractFormData
- * @param  {[type]} value: The actual value for this key
- * @return {[type]}       [description]
- *
+ * @example [key1, key2, key3] => { key1: {key2: { key3: value }}};
+ * @param arr List of key paths, from `getKeyPaths`
+ * @param value The actual value for this key path
  */
-const objectFromBluePrint = (arr, value) => {
-  return arr.reverse().reduce((acc, next) => {
+const objectFromBluePrint = <T>(arr: Array<string>, value: T): Object =>
+  arr.reduceRight<Object>((acc, next) => {
     if (Number(next).toString() === 'NaN') {
       return { [next]: acc };
-    } else {
-      const newAcc = [];
-      newAcc[Number(next)] = acc;
-      return newAcc;
     }
+
+    const newAcc = [];
+    newAcc[Number(next)] = acc;
+    return newAcc;
   }, value);
-};
 
 /**
- * Reconciles formatted data with already formatted data
+ * Merge formatted data with already formatted data
  *
- * @param  {Object} obj extractedObject
- * @param  {Object} target the field object
- * @return {Object} reconciled fields
- *
+ * @note This function modifies `target`
+ * @param obj Object to be merged into `target`
+ * @param target The field object that will be modified
  */
-const reconcile = (obj, target) => {
-  const key = Object.keys(obj)[0];
-  const val = obj[key];
+const reconcile = (obj: Object, target: Object): void => {
+  const [[key, val]] = Object.entries(obj);
 
-  // The reconciliation works even with array has
-  // Object.keys will yield the array indexes
-  // see https://jsbin.com/hulekomopo/1/
-  // Since array are in form of [ , , valu3] [value1, value2]
-  // the final array will be: [value1, value2, value3] has expected
   if (target.hasOwnProperty(key)) {
-    return reconcile(val, target[key]);
+    reconcile(val, target[key]);
   } else {
-    return (target[key] = val);
+    target[key] = val;
   }
 };
