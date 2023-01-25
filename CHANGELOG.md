@@ -1,3 +1,9 @@
+# 1.0.3
+
+Changed:
+
+- Port tests to Vitest.
+
 # 1.0.2
 
 Changed:
