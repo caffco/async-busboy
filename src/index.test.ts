@@ -1,3 +1,4 @@
+import { IncomingMessage } from 'http';
 import Stream from 'stream';
 import { describe, expect, it } from 'vitest';
 
@@ -52,7 +53,7 @@ describe('Async-busboy', () => {
   });
 
   it('should return a valid collection', async () => {
-    const formData = await asyncBusboy(request());
+    const formData = await asyncBusboy(request() as any);
 
     const someCollection = formData.fields.someCollection;
     expect(Array.isArray(someCollection)).toBe(true);
@@ -114,7 +115,8 @@ describe('Async-busboy', () => {
 const request = () => {
   // https://github.com/mscdex/busboy/blob/master/test/test-types-multipart.js
 
-  const stream = new Stream.PassThrough();
+  const stream = new Stream.PassThrough() as unknown as Stream.PassThrough &
+    IncomingMessage;
 
   stream.headers = {
     'content-type':

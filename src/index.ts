@@ -1,0 +1,266 @@
+import type { IncomingMessage } from 'http';
+import type { BusboyConfig, BusboyEvents } from 'busboy';
+import Busboy from 'busboy';
+import type { Readable } from 'stream';
+import fs, { ReadStream } from 'fs';
+import os from 'os';
+import path from 'path';
+
+const getDescriptor = Object.getOwnPropertyDescriptor;
+
+export interface ErrorWithCodeAndStatus extends Error {
+  code: string;
+  status: number;
+}
+
+interface AsyncBusboyConfig extends BusboyConfig {
+  onFile?: BusboyEvents['file'];
+}
+
+export default function (
+  request: IncomingMessage,
+  overridenOptions: Partial<AsyncBusboyConfig> = {},
+) {
+  const options: AsyncBusboyConfig = {
+    ...overridenOptions,
+    headers: {
+      'content-type': '',
+      ...request.headers,
+      ...overridenOptions.headers,
+    },
+  };
+
+  const customOnFile = options.onFile ?? false;
+  delete options.onFile;
+
+  const busboy = new Busboy(options);
+
+  return new Promise<{
+    fields: Record<string, string | Array<string>>;
+    files: Array<ReadStreamWithMetadata>;
+  }>((resolve, reject) => {
+    const fields: Record<string, string | Array<string>> = {};
+    const filePromises: Array<ReadStreamWithMetadata> = [];
+
+    request.on('close', cleanup);
+
+    busboy
+      .on('field', onField.bind(null, fields))
+      .on('file', customOnFile || onFile.bind(null, filePromises))
+      .on('error', onError)
+      .on('end', onEnd)
+      .on('finish', onEnd);
+
+    busboy.on('partsLimit', function () {
+      const err = new Error(
+        'Reach parts limit',
+      ) as unknown as ErrorWithCodeAndStatus;
+      err.code = 'Request_parts_limit';
+      err.status = 413;
+      onError(err);
+    });
+
+    busboy.on('filesLimit', () => {
+      const err = new Error(
+        'Reach files limit',
+      ) as unknown as ErrorWithCodeAndStatus;
+      err.code = 'Request_files_limit';
+      err.status = 413;
+      onError(err);
+    });
+
+    busboy.on('fieldsLimit', () => {
+      const err = new Error(
+        'Reach fields limit',
+      ) as unknown as ErrorWithCodeAndStatus;
+      err.code = 'Request_fields_limit';
+      err.status = 413;
+      onError(err);
+    });
+
+    request.pipe(busboy);
+
+    function onError(err: Error) {
+      cleanup();
+      return reject(err);
+    }
+
+    function onEnd(err?: Error) {
+      if (err) {
+        return reject(err);
+      }
+      if (customOnFile) {
+        cleanup();
+        resolve({ fields, files: [] });
+      } else {
+        Promise.all(filePromises)
+          .then((files) => {
+            cleanup();
+            resolve({ fields, files });
+          })
+          .catch(reject);
+      }
+    }
+
+    function cleanup() {
+      busboy.removeListener('field', onField);
+      busboy.removeListener('file', customOnFile || onFile);
+      busboy.removeListener('close', cleanup);
+      busboy.removeListener('end', cleanup);
+      busboy.removeListener('error', onEnd);
+      busboy.removeListener('partsLimit', onEnd);
+      busboy.removeListener('filesLimit', onEnd);
+      busboy.removeListener('fieldsLimit', onEnd);
+      busboy.removeListener('finish', onEnd);
+    }
+  });
+}
+
+const onField = (
+  fields: Record<string, string | Array<string>>,
+  name: Parameters<BusboyEvents['field']>[0],
+  val: Parameters<BusboyEvents['field']>[1],
+  fieldnameTruncated: Parameters<BusboyEvents['field']>[2],
+  valTruncated: Parameters<BusboyEvents['field']>[3],
+  encoding: Parameters<BusboyEvents['field']>[4],
+  mime: Parameters<BusboyEvents['field']>[5],
+): ReturnType<BusboyEvents['field']> => {
+  // don't overwrite prototypes
+  if (getDescriptor(Object.prototype, name)) return;
+
+  // This looks like a stringified array, let's parse it
+  if (name.indexOf('[') > -1) {
+    const obj = objectFromBluePrint(extractFormData(name), val);
+    reconcile(obj, fields);
+  } else {
+    if (fields.hasOwnProperty(name)) {
+      if (Array.isArray(fields[name])) {
+        (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>).push(val);
+      } else {
+        (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>) = [
+          fields[name] as Parameters<BusboyEvents['field']>[0],
+          val,
+        ];
+      }
+    } else {
+      fields[name] = val;
+    }
+  }
+};
+
+interface ReadStreamWithMetadata extends ReadStream {
+  fieldname: string;
+  filename: string;
+  transferEncoding: string;
+  encoding: string;
+  mimeType: string;
+  mime: string;
+}
+
+function onFile(
+  filePromises: Array<Promise<ReadStreamWithMetadata>>,
+  fieldname: string,
+  file: Readable & {
+    tmpName: string;
+  },
+  filename: string,
+  encoding: string,
+  mimetype: string,
+) {
+  const tmpName = Math.random().toString(16).substring(2) + '-' + filename;
+  file.tmpName = tmpName;
+  const saveTo = path.join(os.tmpdir(), path.basename(tmpName));
+  const writeStream = fs.createWriteStream(saveTo);
+
+  const filePromise = new Promise<ReadStreamWithMetadata>((resolve, reject) =>
+    writeStream
+      .on('open', () =>
+        file
+          .pipe(writeStream)
+          .on('error', reject)
+          .on('finish', () => {
+            const readStream = fs.createReadStream(
+              saveTo,
+            ) as ReadStreamWithMetadata;
+            readStream.fieldname = fieldname;
+            readStream.filename = filename;
+            readStream.transferEncoding = encoding;
+            readStream.encoding = encoding;
+            readStream.mimeType = mimetype;
+            readStream.mime = mimetype;
+            resolve(readStream);
+          }),
+      )
+      .on('error', (err) => {
+        file.resume().on('error', reject);
+        reject(err);
+      }),
+  );
+  filePromises.push(filePromise);
+}
+
+/**
+ *
+ * Extract a hierarchy array from a stringified formData single input.
+ *
+ *
+ * i.e. topLevel[sub1][sub2] => [topLevel, sub1, sub2]
+ *
+ * @param  {String} string: Stringify representation of a formData Object
+ * @return {Array}
+ *
+ */
+const extractFormData = (string) => {
+  const arr = string.split('[');
+  const first = arr.shift();
+  const res = arr.map((v) => v.split(']')[0]);
+  res.unshift(first);
+  return res;
+};
+
+/**
+ *
+ * Generate an object given an hierarchy blueprint and the value
+ *
+ * i.e. [key1, key2, key3] => { key1: {key2: { key3: value }}};
+ *
+ * @param  {Array} arr:   from extractFormData
+ * @param  {[type]} value: The actual value for this key
+ * @return {[type]}       [description]
+ *
+ */
+const objectFromBluePrint = (arr, value) => {
+  return arr.reverse().reduce((acc, next) => {
+    if (Number(next).toString() === 'NaN') {
+      return { [next]: acc };
+    } else {
+      const newAcc = [];
+      newAcc[Number(next)] = acc;
+      return newAcc;
+    }
+  }, value);
+};
+
+/**
+ * Reconciles formatted data with already formatted data
+ *
+ * @param  {Object} obj extractedObject
+ * @param  {Object} target the field object
+ * @return {Object} reconciled fields
+ *
+ */
+const reconcile = (obj, target) => {
+  const key = Object.keys(obj)[0];
+  const val = obj[key];
+
+  // The reconciliation works even with array has
+  // Object.keys will yield the array indexes
+  // see https://jsbin.com/hulekomopo/1/
+  // Since array are in form of [ , , valu3] [value1, value2]
+  // the final array will be: [value1, value2, value3] has expected
+  if (target.hasOwnProperty(key)) {
+    return reconcile(val, target[key]);
+  } else {
+    return (target[key] = val);
+  }
+};
