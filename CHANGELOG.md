@@ -1,3 +1,9 @@
+# 3.0.2
+
+Fixed:
+
+- Move `@types/busboy` to dependencies.
+
 # 3.0.1
 
 Changed:
