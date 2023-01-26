@@ -32,7 +32,7 @@ export default function (
 
   const customOnFile = options.onFile ?? false;
 
-  const busboy = new Busboy(options);
+  const busboy = Busboy(options);
 
   return new Promise<{
     fields: Record<string, string | Array<string>>;
@@ -83,6 +83,7 @@ export default function (
       .on('file', customOnFile || onFile.bind(null, filePromises))
       .on('error', onError)
       .on('end', onEnd)
+      .on('close', onEnd)
       .on('finish', onEnd);
 
     busboy.on('partsLimit', () => {
@@ -120,10 +121,7 @@ const onField = (
   fields: Record<string, string | Array<string>>,
   name: Parameters<BusboyEvents['field']>[0],
   val: Parameters<BusboyEvents['field']>[1],
-  fieldnameTruncated: Parameters<BusboyEvents['field']>[2],
-  valTruncated: Parameters<BusboyEvents['field']>[3],
-  encoding: Parameters<BusboyEvents['field']>[4],
-  mime: Parameters<BusboyEvents['field']>[5],
+  info: Parameters<BusboyEvents['field']>[2],
 ): ReturnType<BusboyEvents['field']> => {
   // Don't overwrite prototypes
   if (getDescriptor(Object.prototype, name)) {
@@ -163,15 +161,13 @@ interface ReadStreamWithMetadata extends ReadStream {
 
 const onFile = (
   filePromises: Array<Promise<ReadStreamWithMetadata>>,
-  fieldname: string,
-  file: Readable & {
+  fieldname: Parameters<BusboyEvents['file']>[0],
+  file: Parameters<BusboyEvents['file']>[1] & {
     tmpName: string;
   },
-  filename: string,
-  encoding: string,
-  mimetype: string,
+  info: Parameters<BusboyEvents['file']>[2],
 ) => {
-  const tmpName = Math.random().toString(16).substring(2) + '-' + filename;
+  const tmpName = Math.random().toString(16).substring(2) + '-' + info.filename;
   file.tmpName = tmpName;
   const saveTo = path.join(os.tmpdir(), path.basename(tmpName));
   const writeStream = fs.createWriteStream(saveTo);
@@ -187,11 +183,11 @@ const onFile = (
               saveTo,
             ) as ReadStreamWithMetadata;
             readStream.fieldname = fieldname;
-            readStream.filename = filename;
-            readStream.transferEncoding = encoding;
-            readStream.encoding = encoding;
-            readStream.mimeType = mimetype;
-            readStream.mime = mimetype;
+            readStream.filename = info.filename;
+            readStream.transferEncoding = info.encoding;
+            readStream.encoding = info.encoding;
+            readStream.mimeType = info.mimeType;
+            readStream.mime = info.mimeType;
             resolve(readStream);
           }),
       )

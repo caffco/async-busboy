@@ -1,5 +1,6 @@
 import { IncomingMessage } from 'http';
 import Stream from 'stream';
+import type { BusboyEvents } from 'busboy';
 import { describe, expect, it } from 'vitest';
 
 import asyncBusboy from '.';
@@ -10,11 +11,11 @@ const fileContent = [
   'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
 ];
 
-const readFileStreamPromise = (readStream) =>
-  new Promise((resolve, reject) => {
+const readFileStreamPromise = (readStream: Stream.Readable) =>
+  new Promise<string>((resolve, reject) => {
     const buffers = [];
     readStream.on('data', (buf) => buffers.push(buf));
-    readStream.on('end', () => resolve(Buffer.concat(buffers)));
+    readStream.on('end', () => resolve(Buffer.concat(buffers).toString()));
     readStream.on('error', reject);
   });
 
@@ -27,16 +28,14 @@ describe('Async-busboy', () => {
 
     // Check file contents
     const fileContentPromises = formData.files.map(readFileStreamPromise);
-    await Promise.all(fileContentPromises).then((contentBufs) => {
-      contentBufs.forEach((content, index) =>
-        expect(content.toString()).toBe(fileContent[index]),
-      );
-    });
+    await expect(Promise.all(fileContentPromises)).resolves.toEqual(
+      fileContent,
+    );
   });
 
   it('should gather all fields and streams using custom file handler', async () => {
     const fileContentPromises = [];
-    const onFileHandler = (fieldname, file, filename, encoding, mimetype) => {
+    const onFileHandler: BusboyEvents['file'] = (fieldname, file, info) => {
       fileContentPromises.push(readFileStreamPromise(file));
     };
 
@@ -53,7 +52,7 @@ describe('Async-busboy', () => {
   });
 
   it('should return a valid collection', async () => {
-    const formData = await asyncBusboy(request() as any);
+    const formData = await asyncBusboy(request());
 
     const someCollection = formData.fields.someCollection;
     expect(Array.isArray(someCollection)).toBe(true);
@@ -193,6 +192,8 @@ const request = () => {
       '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k--',
     ].join('\r\n'),
   );
+
+  stream.end();
 
   return stream;
 };
