@@ -11,6 +11,93 @@ const fileContent = [
   'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
 ];
 
+const multipartContent = [
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="file_name_0"',
+  '',
+  'super alpha file',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="file_name_0"',
+  '',
+  'super beta file',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="file_name_0"',
+  '',
+  'super gamma file',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="file_name_1"',
+  '',
+  'super gamma file',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="_csrf"',
+  '',
+  'ooxx',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="hasOwnProperty"',
+  '',
+  'super bad file',
+
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="someCollection[0][foo]"',
+  '',
+  'foo',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="someCollection[0][bar]"',
+  '',
+  'bar',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="someCollection[1][0]"',
+  '',
+  'foo',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="someCollection[1][1]"',
+  '',
+  'bar',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="someField[foo]"',
+  '',
+  'foo',
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="someField[bar]"',
+  '',
+  'bar',
+
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="upload_file_0"; filename="1k_a.dat"',
+  'Content-Type: application/octet-stream',
+  '',
+  fileContent[0],
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="upload_file_1"; filename="1k_b.dat"',
+  'Content-Type: application/octet-stream',
+  '',
+  fileContent[1],
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  'Content-Disposition: form-data; name="upload_file_2"; filename="hack.exe"',
+  'Content-Type: application/octet-stream',
+  '',
+  fileContent[2],
+  '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k--',
+].join('\r\n');
+
+const request = () => {
+  // https://github.com/mscdex/busboy/blob/master/test/test-types-multipart.js
+
+  const stream = new Stream.PassThrough() as unknown as Stream.PassThrough &
+    IncomingMessage;
+
+  stream.headers = {
+    'content-type':
+      'multipart/form-data; boundary=---------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
+  };
+
+  stream.write(multipartContent);
+
+  stream.end();
+
+  return stream;
+};
+
 const readFileStreamPromise = (readStream: Stream.Readable) =>
   new Promise<string>((resolve, reject) => {
     const buffers = [];
@@ -78,122 +165,22 @@ describe('Async-busboy', () => {
     );
   });
 
-  it('should throw error when the files limit is reached', async () => {
+  it.each`
+    limits           | code                      | message                 | description
+    ${{ files: 1 }}  | ${'Request_files_limit'}  | ${'Reach files limit'}  | ${'when the files limit is reached'}
+    ${{ fields: 1 }} | ${'Request_fields_limit'} | ${'Reach fields limit'} | ${'when the fields limit is reached'}
+    ${{ parts: 1 }}  | ${'Request_parts_limit'}  | ${'Reach parts limit'}  | ${'when the parts limit is reached'}
+  `('should throw error $description', async ({ limits, code, message }) => {
     await expect(
       asyncBusboy(request(), {
-        limits: {
-          files: 1,
-        },
+        limits,
       }),
     ).rejects.toEqual(
       expect.objectContaining({
         status: 413,
-        code: 'Request_files_limit',
-        message: 'Reach files limit',
-      }),
-    );
-  });
-
-  it('should throw error when the fields limit is reached', async () => {
-    await expect(
-      asyncBusboy(request(), {
-        limits: {
-          fields: 1,
-        },
-      }),
-    ).rejects.toEqual(
-      expect.objectContaining({
-        status: 413,
-        code: 'Request_fields_limit',
-        message: 'Reach fields limit',
+        code,
+        message,
       }),
     );
   });
 });
-
-const request = () => {
-  // https://github.com/mscdex/busboy/blob/master/test/test-types-multipart.js
-
-  const stream = new Stream.PassThrough() as unknown as Stream.PassThrough &
-    IncomingMessage;
-
-  stream.headers = {
-    'content-type':
-      'multipart/form-data; boundary=---------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-  };
-
-  stream.write(
-    [
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="file_name_0"',
-      '',
-      'super alpha file',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="file_name_0"',
-      '',
-      'super beta file',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="file_name_0"',
-      '',
-      'super gamma file',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="file_name_1"',
-      '',
-      'super gamma file',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="_csrf"',
-      '',
-      'ooxx',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="hasOwnProperty"',
-      '',
-      'super bad file',
-
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="someCollection[0][foo]"',
-      '',
-      'foo',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="someCollection[0][bar]"',
-      '',
-      'bar',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="someCollection[1][0]"',
-      '',
-      'foo',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="someCollection[1][1]"',
-      '',
-      'bar',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="someField[foo]"',
-      '',
-      'foo',
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="someField[bar]"',
-      '',
-      'bar',
-
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="upload_file_0"; filename="1k_a.dat"',
-      'Content-Type: application/octet-stream',
-      '',
-      fileContent[0],
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="upload_file_1"; filename="1k_b.dat"',
-      'Content-Type: application/octet-stream',
-      '',
-      fileContent[1],
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k',
-      'Content-Disposition: form-data; name="upload_file_2"; filename="hack.exe"',
-      'Content-Type: application/octet-stream',
-      '',
-      fileContent[2],
-      '-----------------------------paZqsnEHRufoShdX6fh0lUhXBP4k--',
-    ].join('\r\n'),
-  );
-
-  stream.end();
-
-  return stream;
-};
