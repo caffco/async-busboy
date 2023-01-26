@@ -1,8 +1,10 @@
-// This file is if you want to run some test localy, run: `node index.js`
-// From there you can use something like [Postman](https://chrome.google.com/webstore/detail/postman/fhbjgbiflinjbdggehcddcbncdddomop?hl=en) to send `POST` request to `localhost:8080`.
+// This file is if you want to run some test localy, run: `ts-node index.ts`
+// From there you can use something like
+// [Postman](https://chrome.google.com/webstore/detail/postman/fhbjgbiflinjbdggehcddcbncdddomop?hl=en)
+// to send `POST` request to `localhost:8080`.
 // Note: When using Postman make sure to not send a `Content-Type` header, if it's field by default, juste delete it.
-
 import http from 'http';
+
 import asyncBusboy from '../src';
 
 const PORT = 8080;

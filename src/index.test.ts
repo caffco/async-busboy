@@ -1,6 +1,6 @@
+import type { BusboyEvents } from 'busboy';
 import { IncomingMessage } from 'http';
 import Stream from 'stream';
-import type { BusboyEvents } from 'busboy';
 import { describe, expect, it } from 'vitest';
 
 import asyncBusboy from '.';
@@ -35,7 +35,7 @@ describe('Async-busboy', () => {
 
   it('should gather all fields and streams using custom file handler', async () => {
     const fileContentPromises = [];
-    const onFileHandler: BusboyEvents['file'] = (fieldname, file, info) => {
+    const onFileHandler: BusboyEvents['file'] = (fieldname, file) => {
       fileContentPromises.push(readFileStreamPromise(file));
     };
 

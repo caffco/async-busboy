@@ -1,12 +1,9 @@
-import type { IncomingMessage } from 'http';
 import type { BusboyConfig, BusboyEvents } from 'busboy';
 import Busboy from 'busboy';
-import type { Readable } from 'stream';
 import fs, { ReadStream } from 'fs';
+import type { IncomingMessage } from 'http';
 import os from 'os';
 import path from 'path';
-
-const getDescriptor = Object.getOwnPropertyDescriptor;
 
 export interface ErrorWithCodeAndStatus extends Error {
   code: string;
@@ -15,6 +12,15 @@ export interface ErrorWithCodeAndStatus extends Error {
 
 interface AsyncBusboyConfig extends BusboyConfig {
   onFile?: BusboyEvents['file'];
+}
+
+interface ReadStreamWithMetadata extends ReadStream {
+  fieldname: string;
+  filename: string;
+  transferEncoding: string;
+  encoding: string;
+  mimeType: string;
+  mime: string;
 }
 
 export default function (
@@ -30,8 +36,6 @@ export default function (
     },
   };
 
-  const customOnFile = options.onFile ?? false;
-
   const busboy = Busboy(options);
 
   return new Promise<{
@@ -39,21 +43,20 @@ export default function (
     files: Array<ReadStreamWithMetadata>;
   }>((resolve, reject) => {
     const fields: Record<string, string | Array<string>> = {};
-    const filePromises: Array<ReadStreamWithMetadata> = [];
+    const filePromises: Array<Promise<ReadStreamWithMetadata>> = [];
+
+    const onField = onFieldFactory(fields);
+    const onFile = options.onFile ?? onFileFactory(filePromises);
 
     const onError = (err: Error): void => {
       cleanup();
-      return reject(err);
+      reject(err);
     };
 
     const onEnd = (err?: Error): void => {
       if (err) {
-        return reject(err);
-      }
-
-      if (customOnFile) {
-        cleanup();
-        return resolve({ fields, files: [] });
+        reject(err);
+        return;
       }
 
       Promise.all(filePromises)
@@ -66,7 +69,7 @@ export default function (
 
     const cleanup = () => {
       busboy.removeListener('field', onField);
-      busboy.removeListener('file', customOnFile || onFile);
+      busboy.removeListener('file', onFile);
       busboy.removeListener('close', cleanup);
       busboy.removeListener('end', cleanup);
       busboy.removeListener('error', onEnd);
@@ -79,124 +82,129 @@ export default function (
     request.on('close', cleanup);
 
     busboy
-      .on('field', onField.bind(null, fields))
-      .on('file', customOnFile || onFile.bind(null, filePromises))
+      .on('field', onField)
+      .on('file', onFile)
       .on('error', onError)
       .on('end', onEnd)
       .on('close', onEnd)
-      .on('finish', onEnd);
-
-    busboy.on('partsLimit', () => {
-      const err = new Error(
-        'Reach parts limit',
-      ) as unknown as ErrorWithCodeAndStatus;
-      err.code = 'Request_parts_limit';
-      err.status = 413;
-      onError(err);
-    });
-
-    busboy.on('filesLimit', () => {
-      const err = new Error(
-        'Reach files limit',
-      ) as unknown as ErrorWithCodeAndStatus;
-      err.code = 'Request_files_limit';
-      err.status = 413;
-      onError(err);
-    });
-
-    busboy.on('fieldsLimit', () => {
-      const err = new Error(
-        'Reach fields limit',
-      ) as unknown as ErrorWithCodeAndStatus;
-      err.code = 'Request_fields_limit';
-      err.status = 413;
-      onError(err);
-    });
+      .on('finish', onEnd)
+      .on('partsLimit', () =>
+        onError(
+          createError({
+            message: 'Reach parts limit',
+            code: 'Request_parts_limit',
+          }),
+        ),
+      )
+      .on('filesLimit', () =>
+        onError(
+          createError({
+            message: 'Reach files limit',
+            code: 'Request_files_limit',
+          }),
+        ),
+      )
+      .on('fieldsLimit', () =>
+        onError(
+          createError({
+            message: 'Reach fields limit',
+            code: 'Request_fields_limit',
+          }),
+        ),
+      );
 
     request.pipe(busboy);
   });
 }
 
-const onField = (
-  fields: Record<string, string | Array<string>>,
-  name: Parameters<BusboyEvents['field']>[0],
-  val: Parameters<BusboyEvents['field']>[1],
-  info: Parameters<BusboyEvents['field']>[2],
-): ReturnType<BusboyEvents['field']> => {
-  // Don't overwrite prototypes
-  if (getDescriptor(Object.prototype, name)) {
-    return;
-  }
+const hasOwnProperty = <T extends object>(target: T, propertyName: string) =>
+  Object.prototype.hasOwnProperty.call(target, propertyName);
 
-  // This looks like a stringified array, let's parse it
-  if (name.indexOf('[') > -1) {
-    const obj = objectFromBluePrint(getKeyPaths(name), val);
-    reconcile(obj, fields);
-    return;
-  }
+const onFieldFactory =
+  (fields: Record<string, string | Array<string>>): BusboyEvents['field'] =>
+  (name, val) => {
+    // Don't overwrite prototypes
+    if (hasOwnProperty(Object.prototype, name)) {
+      return;
+    }
 
-  if (!fields.hasOwnProperty(name)) {
-    fields[name] = val;
-    return;
-  }
+    // This looks like a stringified array, let's parse it
+    if (name.indexOf('[') > -1) {
+      const obj = objectFromBluePrint(getKeyPaths(name), val);
+      reconcile(obj, fields);
+      return;
+    }
 
-  if (Array.isArray(fields[name])) {
-    (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>).push(val);
-  } else {
-    (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>) = [
-      fields[name] as Parameters<BusboyEvents['field']>[0],
-      val,
-    ];
-  }
-};
+    if (!hasOwnProperty(fields, name)) {
+      fields[name] = val;
+      return;
+    }
 
-interface ReadStreamWithMetadata extends ReadStream {
-  fieldname: string;
-  filename: string;
-  transferEncoding: string;
-  encoding: string;
-  mimeType: string;
-  mime: string;
-}
+    if (Array.isArray(fields[name])) {
+      (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>).push(val);
+    } else {
+      (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>) = [
+        fields[name] as Parameters<BusboyEvents['field']>[0],
+        val,
+      ];
+    }
+  };
 
-const onFile = (
-  filePromises: Array<Promise<ReadStreamWithMetadata>>,
-  fieldname: Parameters<BusboyEvents['file']>[0],
-  file: Parameters<BusboyEvents['file']>[1] & {
-    tmpName: string;
-  },
-  info: Parameters<BusboyEvents['file']>[2],
-) => {
-  const tmpName = Math.random().toString(16).substring(2) + '-' + info.filename;
-  file.tmpName = tmpName;
-  const saveTo = path.join(os.tmpdir(), path.basename(tmpName));
-  const writeStream = fs.createWriteStream(saveTo);
+const onFileFactory =
+  (
+    filePromises: Array<Promise<ReadStreamWithMetadata>>,
+  ): BusboyEvents['file'] =>
+  (
+    fieldname,
+    file: Parameters<BusboyEvents['file']>[1] & {
+      tmpName: string;
+    },
+    info,
+  ) => {
+    const tmpName =
+      Math.random().toString(16).substring(2) + '-' + info.filename;
+    file.tmpName = tmpName;
+    const saveTo = path.join(os.tmpdir(), path.basename(tmpName));
+    const writeStream = fs.createWriteStream(saveTo);
 
-  const filePromise = new Promise<ReadStreamWithMetadata>((resolve, reject) =>
-    writeStream
-      .on('open', () =>
-        file
-          .pipe(writeStream)
-          .on('error', reject)
-          .on('finish', () => {
-            const readStream = fs.createReadStream(
-              saveTo,
-            ) as ReadStreamWithMetadata;
-            readStream.fieldname = fieldname;
-            readStream.filename = info.filename;
-            readStream.transferEncoding = info.encoding;
-            readStream.encoding = info.encoding;
-            readStream.mimeType = info.mimeType;
-            readStream.mime = info.mimeType;
-            resolve(readStream);
-          }),
-      )
-      .on('error', (err) => {
-        file.resume().on('error', reject);
-        reject(err);
-      }),
-  );
-  filePromises.push(filePromise);
+    const filePromise = new Promise<ReadStreamWithMetadata>((resolve, reject) =>
+      writeStream
+        .on('open', () =>
+          file
+            .pipe(writeStream)
+            .on('error', reject)
+            .on('finish', () => {
+              const readStream = fs.createReadStream(
+                saveTo,
+              ) as ReadStreamWithMetadata;
+              readStream.fieldname = fieldname;
+              readStream.filename = info.filename;
+              readStream.transferEncoding = info.encoding;
+              readStream.encoding = info.encoding;
+              readStream.mimeType = info.mimeType;
+              readStream.mime = info.mimeType;
+              resolve(readStream);
+            }),
+        )
+        .on('error', (err) => {
+          file.resume().on('error', reject);
+          reject(err);
+        }),
+    );
+    filePromises.push(filePromise);
+  };
+
+const createError = ({
+  message,
+  code,
+}: {
+  message: string;
+  code: string;
+}): ErrorWithCodeAndStatus => {
+  const err = new Error(message) as unknown as ErrorWithCodeAndStatus;
+  err.code = code;
+  err.status = 413;
+  return err;
 };
 
 /**
@@ -218,8 +226,8 @@ const getKeyPaths = (keyPath: string): Array<string> => {
  * @param arr List of key paths, from `getKeyPaths`
  * @param value The actual value for this key path
  */
-const objectFromBluePrint = <T>(arr: Array<string>, value: T): Object =>
-  arr.reduceRight<Object>((acc, next) => {
+const objectFromBluePrint = <T>(arr: Array<string>, value: T): object =>
+  arr.reduceRight<object>((acc, next) => {
     if (Number(next).toString() === 'NaN') {
       return { [next]: acc };
     }
@@ -227,7 +235,7 @@ const objectFromBluePrint = <T>(arr: Array<string>, value: T): Object =>
     const newAcc = [];
     newAcc[Number(next)] = acc;
     return newAcc;
-  }, value);
+  }, value as object);
 
 /**
  * Merge formatted data with already formatted data
@@ -236,10 +244,10 @@ const objectFromBluePrint = <T>(arr: Array<string>, value: T): Object =>
  * @param obj Object to be merged into `target`
  * @param target The field object that will be modified
  */
-const reconcile = (obj: Object, target: Object): void => {
+const reconcile = (obj: object, target: object): void => {
   const [[key, val]] = Object.entries(obj);
 
-  if (target.hasOwnProperty(key)) {
+  if (hasOwnProperty(target, key)) {
     reconcile(val, target[key]);
   } else {
     target[key] = val;
