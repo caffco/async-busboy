@@ -1,3 +1,11 @@
+# 3.0.0
+
+BREAKING CHANGES:
+
+- There are no intentional breaking changes.
+- Internal `busboy` dependency upgraded to v1.6.0.
+- Major version is bumped to prevent potential breaking changes introduced by `busboy` 1.6.0.
+
 # 2.0.1
 
 Changed:
