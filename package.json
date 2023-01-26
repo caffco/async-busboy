@@ -1,6 +1,6 @@
 {
   "name": "@caff/async-busboy",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Promise based multipart form parser",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

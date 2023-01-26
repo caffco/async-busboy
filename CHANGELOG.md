@@ -1,3 +1,10 @@
+# 3.0.1
+
+Changed:
+
+- Improved test coverage.
+- Applied linter fixes.
+
 # 3.0.0
 
 BREAKING CHANGES:
