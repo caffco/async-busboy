@@ -41,7 +41,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@types/busboy": "^1.5.3",
+    "@types/busboy": "^1.5.4",
     "busboy": "^1.6.0"
   },
   "devDependencies": {
