@@ -1,7 +1,18 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.1.3/schema.json",
   "vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": false },
-  "files": { "ignoreUnknown": false },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": [
+      "src/**/*",
+      "*.ts",
+      "*.js",
+      "*.json",
+      "!coverage/**/*",
+      "!dist/**/*",
+      "!node_modules/**/*"
+    ]
+  },
   "formatter": {
     "enabled": true,
     "formatWithErrors": false,
@@ -56,7 +67,7 @@
       "style": {
         "noInferrableTypes": "error",
         "noNamespace": "error",
-        "noNonNullAssertion": "warn",
+        "noNonNullAssertion": "error",
         "useArrayLiterals": "error",
         "useAsConstAssertion": "error"
       },
@@ -73,7 +84,7 @@
         "noDuplicateObjectKeys": "error",
         "noDuplicateParameters": "error",
         "noEmptyBlockStatements": "error",
-        "noExplicitAny": "warn",
+        "noExplicitAny": "error",
         "noExtraNonNullAssertion": "error",
         "noFallthroughSwitchClause": "error",
         "noFunctionAssign": "error",
