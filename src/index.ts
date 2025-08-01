@@ -117,14 +117,14 @@ export default function (
   });
 }
 
-const hasOwnProperty = <T extends object>(target: T, propertyName: string) =>
-  Object.prototype.hasOwnProperty.call(target, propertyName);
+const hasOwnProp = <T extends object>(target: T, propertyName: string) =>
+  Object.hasOwn(target, propertyName);
 
 const onFieldFactory =
   (fields: Record<string, string | Array<string>>): BusboyEvents['field'] =>
   (name, val) => {
     // Don't overwrite prototypes
-    if (hasOwnProperty(Object.prototype, name)) {
+    if (hasOwnProp(Object.prototype, name)) {
       return;
     }
 
@@ -135,7 +135,7 @@ const onFieldFactory =
       return;
     }
 
-    if (!hasOwnProperty(fields, name)) {
+    if (!hasOwnProp(fields, name)) {
       fields[name] = val;
       return;
     }
@@ -247,7 +247,7 @@ const objectFromBluePrint = <T>(arr: Array<string>, value: T): object =>
 const reconcile = (obj: object, target: object): void => {
   const [[key, val]] = Object.entries(obj);
 
-  if (hasOwnProperty(target, key)) {
+  if (hasOwnProp(target, key)) {
     reconcile(val, target[key]);
   } else {
     target[key] = val;
