@@ -3,17 +3,14 @@
 [![NPM version][npm-image]][npm-url]
 [![build status][build-status-image]][build-status-url]
 [![Test coverage][coverage-image]][coverage-url]
-[![Maintainability][maintainability-image]][maintainability-url]
 [![npm download][download-image]][download-url]
 
 [npm-image]: https://img.shields.io/npm/v/@caff/async-busboy.svg
 [npm-url]: https://npmjs.org/package/@caff/async-busboy
 [build-status-image]: https://github.com/caffco/async-busboy/actions/workflows/test.yml/badge.svg
 [build-status-url]: https://github.com/caffco/async-busboy/actions/workflows/test.yml
-[coverage-image]: https://api.codeclimate.com/v1/badges/cc0025a7d5baeb3d99bb/test_coverage
-[coverage-url]: https://codeclimate.com/github/caffco/async-busboy/test_coverage
-[maintainability-image]: https://api.codeclimate.com/v1/badges/cc0025a7d5baeb3d99bb/maintainability
-[maintainability-url]: https://codeclimate.com/github/caffco/async-busboy/maintainability
+[coverage-image]: https://codecov.io/gh/caffco/async-busboy/graph/badge.svg?token=SzDE43c1MV
+[coverage-url]: https://codecov.io/gh/caffco/async-busboy
 [download-image]: https://img.shields.io/npm/dm/@caff/async-busboy.svg
 [download-url]: https://npmjs.org/package/@caff/async-busboy
 
