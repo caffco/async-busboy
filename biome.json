@@ -6,6 +6,7 @@
     "includes": [
       "src/**/*",
       "*.ts",
+      "*.mts",
       "*.js",
       "*.json",
       "!coverage/**/*",
