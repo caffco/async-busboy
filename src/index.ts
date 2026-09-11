@@ -143,7 +143,7 @@ const onFieldFactory =
     if (Array.isArray(fields[name])) {
       (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>).push(val);
     } else {
-      (fields[name] as Array<Parameters<BusboyEvents['field']>[0]>) = [
+      fields[name] = [
         fields[name] as Parameters<BusboyEvents['field']>[0],
         val,
       ];
